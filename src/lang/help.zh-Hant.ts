@@ -156,13 +156,7 @@ export const helpZhHant = {
         "disableToggleBinding": "停用將切換值綁定至個別對話的功能。停用後，綁定／儲存／預設按鈕將被隱藏，且切換對話時不會還原先前綁定的值。",
         "keepSessionAlive": "使分頁保持活躍狀態，防止因閒置而在瀏覽器中過期。可能需要重新整理後才能生效。\n\n- **透過音效**：定期播放靜音音訊以保持工作階段活躍。此方法在大多數瀏覽器中相容性最佳且最有效。",
         "nodeOnlyScrollButtonType": "聊天捲動按鈕的顯示方式。4 個按鈕會加入跳至頂部與底部的控制項；2 個按鈕僅保留上一則/下一則訊息導覽；停用則隱藏按鈕。",
-        "localNetworkModeDesc": "透過本機伺服器路由私有/區域網路模型 URL，而非透過瀏覽器直接抓取。\n\n**用途**\n- 避免瀏覽器的私有網路/CORS 限制\n- 降低本機推斷首個 Token 生成緩慢時的逾時風險\n\n**運作方式**\n- 串流回應使用實驗性的 Job+WebSocket 中繼（回退至 /proxy2）\n- 非串流回應使用 /proxy2 中繼\n\n**限制**\n- 僅適用於 OpenAI 相容的請求路徑",
-        "superMemory": "SupaMemory 透過向 AI 提供總結資料來增強角色的記憶能力。\n\nSupaMemory 是一項文字總結功能。不建議使用輔助模型，除非該模型無審查、最大上下文超過 2000 Token，且具有良好的總結能力。\n\nSupaMemory 提示詞決定了模型如何撰寫總結。留空將使用預設提示詞，建議保持留空。\n\n完成所有設定後，您可以在角色的設定中啟用此功能。",
-        "lorePlus": "Lorebook+ 是一項實驗性功能。使用向量資料庫（VectorDB），而不僅是字串匹配。目的在於提供更好的建立角色體驗和更好的匹配效能。",
-        "removePunctuationHypa": "啟用後，將在執行 HypaMemory 前移除標點符號。",
-        "groupOtherBotRole": "用於定義群組對話中非發言者的角色。",
-        "coldstorage": "Cold Storage 是一項會自動將舊對話與角色資料移到獨立儲存空間的功能，可減少主要儲存空間大小並提升效能。這會降低傳輸時間與傳輸流量，並改善載入對話時的效能。",
-        "hideMessagePageCountDesc": "隱藏重新生成訊息與首條問候訊息的頁碼計數（例如 1/3）。導覽箭頭和重新生成按鈕仍會保持可見。",
+        "localNetworkModeDesc": "透過本機伺服器路由私有/區域網路模型 URL，而非透過瀏覽器直接抓取。\n\n**用途**\n- 避免瀏覽器的私有網路/CORS 限制\n- 降低本機推斷首個 Token 生成緩慢時的逾時風險\n\n**運作方式**\n- 串流回應使用實驗性的 Job+WebSocket 中繼（回退至 /proxy2）\n- 非串流回應使用 /proxy2 中繼\n\n**限制**\n- 僅適用於 OpenAI 相容的請求路徑",        "hideMessagePageCountDesc": "隱藏重新生成訊息與首條問候訊息的頁碼計數（例如 1/3）。導覽箭頭和重新生成按鈕仍會保持可見。",
         "confirmReroll": "在重新生成訊息前要求確認。",
         "sendWithEnter": "使用 Enter 鍵發送訊息。",
         "sendKeyPC": "在桌面版上發送訊息的按鍵。",
@@ -427,4 +421,7 @@ export const helpZhHant = {
         "waveLoras": "最多註冊 3 個 LoRA URL 與權重。僅在模型支援 LoRA 時才會應用。",
         "waveImageReference": "參考圖片模式 (無 / 上傳 / 使用角色圖)。僅當模型支援圖片輸入時有效。",
         "bootBackupReminder": "啟用時，PocketRisu 會在每次啟動時詢問您是否要立即建立伺服器備份。在每次開啟應用程式前，作為一個輕量級的安全防護網非常實用。確認後會執行完整的伺服器備份 (載入畫面會等待完成)；跳過則直接進入應用程式。",
-    }
+    
+        "modelModeLock": "選擇對話使用的模型系統。可以將所有對話固定為傳統模型系統或模型預設綁定系統，或者不進行固定，交由每個對話個別決定。",
+        "newChatModelMode": "當模型系統未固定時，設定新對話預設使用的模型系統。",
+}

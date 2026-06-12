@@ -41,6 +41,13 @@
     let aprilFools = $state(new Date().getMonth() === 3 && new Date().getDate() === 1)
     let aprilFoolsPage = $state(0)
     let keepingSessionAlive = $state(false)
+
+    // Prevent accidental page close / swipe-back on mobile
+    if (typeof window !== 'undefined') {
+        window.addEventListener('beforeunload', (e) => {
+            e.preventDefault()
+        })
+    }
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->

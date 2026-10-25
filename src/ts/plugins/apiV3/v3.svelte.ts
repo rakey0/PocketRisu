@@ -14,14 +14,15 @@ import { alertConfirm, alertError, alertNormal, alertNormalWait } from "src/ts/a
 import { language } from "src/lang";
 import { checkCharOrder, forageStorage, getFetchLogs } from "src/ts/globalApi.svelte";
 import { changeColorScheme, updateColorScheme, updateTextThemeAndCSS, type ColorScheme } from "src/ts/gui/colorscheme";
-import { get } from "svelte/store";
+import { get, writable } from "svelte/store";
 import { registerMCPModule, unregisterMCPModule } from "src/ts/process/mcp/pluginmcp";
 import { getInlayAsset } from "src/ts/process/files/inlays";
 import { getLLMCache, searchLLMCache } from "src/ts/translator/translator";
 import { hasher, risuChatParser, type CbsConditions } from "src/ts/parser/parser.svelte";
 import { LLMFlags, LLMFormat, LLMProvider, LLMTokenizer, type LLMModel } from "src/ts/model/types";
 import { readPersistentJson, removePersistentKey, writePersistentJson } from "src/ts/storage/persistentKv";
-import { createPluginPermissionGate, createPluginScriptHashGetter, type PluginPermission, type PluginPermissionState } from "./pluginPermissionCache";
+import { createPluginPermissionGate, createPluginScriptHashGetter, type PluginPermission, type PluginPermissionDecision, type PluginPermissionState } from "./pluginPermissionCache";
+import { detectPluginPermissions } from "./pluginPermissionUsage";
 import { endAllGenerations } from "src/ts/process/generationState";
 import { sendChat as processSendChat, doingChat } from "src/ts/process/index.svelte";
 import { processScriptFull } from "src/ts/process/scripts";
@@ -609,10 +610,20 @@ const pluginPermissionConsent = (permission: PluginPermission): string => {
     return consent[permission]
 }
 
+// Bumped after every saved permission change — a dialog answer, a change on
+// the settings page or a reset — so the settings page can show it right away.
+export const pluginPermissionRevision = writable(0)
+
 const pluginPermissionGate = createPluginPermissionGate({
     read: () => readPersistentJson<PluginPermissionState>(pluginPermissionStateKey),
-    write: (state) => writePersistentJson(pluginPermissionStateKey, state),
-    remove: () => removePersistentKey(pluginPermissionStateKey),
+    write: async (state) => {
+        await writePersistentJson(pluginPermissionStateKey, state)
+        pluginPermissionRevision.update((n) => n + 1)
+    },
+    remove: async () => {
+        await removePersistentKey(pluginPermissionStateKey)
+        pluginPermissionRevision.update((n) => n + 1)
+    },
     confirm: (pluginName, permission) => alertConfirm(pluginPermissionConsent(permission).replace("{}", pluginName)),
     // Denials are remembered, so tell the user how to undo a misclick.
     // Awaited by the gate so the next queued permission dialog doesn't overwrite it.
@@ -650,6 +661,30 @@ export async function resetPluginPermission(pluginName: string) {
     if (plugin?.script) {
         await pluginPermissionGate.resetScript(await hasher(new TextEncoder().encode(plugin.script)))
     }
+}
+
+export type PluginPermissionSummary = {
+    // Permission names found in the installed code — a hint, see detectPluginPermissions.
+    used: PluginPermission[]
+    decisions: Record<PluginPermission, PluginPermissionDecision>
+}
+
+// For the settings page: the permissions a V3 plugin's installed code seems to
+// use and the saved answer for each, keyed by that code like the requests are.
+export async function getPluginPermissionSummary(pluginName: string): Promise<PluginPermissionSummary | null> {
+    const plugin = DBState.db.plugins?.find(p => p.name === pluginName)
+    if (!plugin?.script || plugin.version !== '3.0') return null
+    return {
+        used: detectPluginPermissions(plugin.script),
+        decisions: await pluginPermissionGate.getScript(await hasher(new TextEncoder().encode(plugin.script))),
+    }
+}
+
+// Sets one saved answer for the installed code; null means ask again next time.
+export async function setPluginPermissionDecision(pluginName: string, permission: PluginPermission, value: boolean | null) {
+    const plugin = DBState.db.plugins?.find(p => p.name === pluginName)
+    if (!plugin?.script) return
+    await pluginPermissionGate.setDecision(await hasher(new TextEncoder().encode(plugin.script)), permission, value)
 }
 
 type PluginV3ProviderOptions = PluginV2ProviderOptions & {

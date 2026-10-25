@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { PlusIcon, LinkIcon, CodeXmlIcon, PowerIcon, PowerOffIcon, ShieldIcon, HardDriveUploadIcon } from "@lucide/svelte";
+    import { PlusIcon, LinkIcon, CodeXmlIcon, PowerIcon, PowerOffIcon, ShieldIcon, ShieldAlertIcon, HardDriveUploadIcon } from "@lucide/svelte";
     import { language } from "src/lang";
     import SettingPage from "src/lib/UI/GUI/SettingPage.svelte";
     import ShButton from "src/lib/UI/GUI/ShButton.svelte";
@@ -12,7 +12,8 @@
     import { DBState, hotReloading } from "src/ts/stores.svelte";
     import { checkPluginUpdate, importPlugin, loadPlugins, updatePlugin } from "src/ts/plugins/plugins.svelte";
     import { requestImmediateSave } from "src/ts/globalApi.svelte";
-    import { resetPluginPermission } from "src/ts/plugins/apiV3/v3.svelte";
+    import { getPluginPermissionSummary, pluginPermissionRevision, resetPluginPermission, setPluginPermissionDecision, type PluginPermissionSummary } from "src/ts/plugins/apiV3/v3.svelte";
+    import { pluginPermissions, type PluginPermission, type PluginPermissionDecision } from "src/ts/plugins/apiV3/pluginPermissionCache";
     import TextInput from "src/lib/UI/GUI/TextInput.svelte";
     import NumberInput from "src/lib/UI/GUI/NumberInput.svelte";
     import SelectInput from "src/lib/UI/GUI/SelectInput.svelte";
@@ -67,6 +68,58 @@
         notifySuccess(language.resetPluginPermissionDone.replace("{}", label))
     }
 
+    // Saved permission answers of the installed V3 plugins, keyed by plugin name.
+    let permissionSummaries = $state<Record<string, PluginPermissionSummary>>({})
+    let permissionRefresh = 0
+
+    async function refreshPermissionSummaries() {
+        const token = ++permissionRefresh
+        const next: Record<string, PluginPermissionSummary> = {}
+        for (const plugin of DBState.db.plugins ?? []) {
+            const summary = await getPluginPermissionSummary(plugin.name)
+            if (summary) next[plugin.name] = summary
+        }
+        // A newer refresh started meanwhile; its result wins.
+        if (token === permissionRefresh) permissionSummaries = next
+    }
+
+    $effect(() => {
+        // Re-runs after any saved answer (also one given in a permission dialog),
+        // and — through reading every plugin's code — after an install, update or removal.
+        void $pluginPermissionRevision
+        void (DBState.db.plugins ?? []).map(p => p.name + p.script)
+        void refreshPermissionSummaries()
+    })
+
+    // The permissions found in a plugin's code, plus any it already asked for
+    // in a way the scan missed.
+    function shownPermissions(name: string): PluginPermission[] {
+        const summary = permissionSummaries[name]
+        if (!summary) return []
+        return pluginPermissions.filter(p => summary.used.includes(p) || summary.decisions[p] !== undefined)
+    }
+
+    function deniedPermissions(name: string): PluginPermission[] {
+        const summary = permissionSummaries[name]
+        return shownPermissions(name).filter(p => summary?.decisions[p] === false)
+    }
+
+    // Denied permissions of enabled plugins, for the warning above the list.
+    let deniedCount = $derived(
+        (DBState.db.plugins ?? []).filter(p => p.enabled).reduce((count, p) => count + deniedPermissions(p.name).length, 0)
+    )
+
+    function decisionValue(decision: PluginPermissionDecision) {
+        return decision === true ? 'allow' : decision === false ? 'deny' : 'ask'
+    }
+
+    async function changePermission(name: string, permission: PluginPermission, value: string) {
+        await setPluginPermissionDecision(name, permission, value === 'allow' ? true : value === 'deny' ? false : null)
+        // Plugins read an answer when they ask, so restart them for the change to apply.
+        loadPlugins()
+        notifySuccess(language.pluginPermissionUpdated)
+    }
+
     async function removePlugin(index: number) {
         const plugin = DBState.db.plugins[index]
         if (!plugin) return
@@ -113,6 +166,12 @@
     {#snippet icon()}<TriangleAlert />{/snippet}
     {language.pluginWarn}
 </ShAlert>
+{#if deniedCount > 0}
+    <ShAlert variant="destructive" className="mb-4">
+        {#snippet icon()}<ShieldAlertIcon />{/snippet}
+        {language.pluginPermissionDeniedWarn(deniedCount)}
+    </ShAlert>
+{/if}
 
 <FolderedList
     folders={DBState.db.pluginFolders ?? []}
@@ -167,6 +226,11 @@
                         {/if}
                     {/await}
                 {/if}
+                {#if plugin.enabled && deniedPermissions(plugin.name).length > 0}
+                    <span class="no-sort text-draculared shrink-0" title={language.pluginPermissionDeniedBadge(deniedPermissions(plugin.name).length)}>
+                        <ShieldAlertIcon size={18}/>
+                    </span>
+                {/if}
                 <button class="no-sort shrink-0 cursor-pointer {plugin.enabled ? 'text-textcolor' : 'text-textcolor2'} hover:text-primary"
                     onclick={(e) => { e.stopPropagation(); togglePlugin(index) }}>
                     {#if plugin.enabled}<PowerIcon size={18}/>{:else}<PowerOffIcon size={18}/>{/if}
@@ -184,6 +248,36 @@
     {#snippet itemPanel(index)}
         {@const plugin = DBState.db.plugins[index]}
         <div class="flex flex-col bg-dark-900/50 p-3 rounded-md">
+            {#if plugin.version === '3.0' && permissionSummaries[plugin.name]}
+                {@const summary = permissionSummaries[plugin.name]}
+                {@const shown = shownPermissions(plugin.name)}
+                <span class="text-textcolor">{language.pluginPermissions}</span>
+                {#if shown.length === 0}
+                    <span class="mt-1 text-sm text-textcolor2">{language.pluginPermissionsNone}</span>
+                {:else}
+                    <div class="mt-2 flex flex-col gap-2">
+                        {#each shown as permission (permission)}
+                            {@const decision = summary.decisions[permission]}
+                            <div class="flex items-center gap-3">
+                                <span class="grow min-w-0 text-sm {decision === false ? 'text-draculared' : 'text-textcolor'}">
+                                    {language.pluginPermissionNames[permission]}
+                                    {#if !summary.used.includes(permission)}
+                                        <span class="text-textcolor2">· {language.pluginPermissionNotDetected}</span>
+                                    {/if}
+                                </span>
+                                <SelectInput size="sm" className="w-32 shrink-0" value={decisionValue(decision)}
+                                    onchange={(e) => changePermission(plugin.name, permission, e.currentTarget.value)}>
+                                    <OptionInput value="allow">{language.pluginPermissionAllow}</OptionInput>
+                                    <OptionInput value="deny">{language.pluginPermissionDeny}</OptionInput>
+                                    <OptionInput value="ask">{language.pluginPermissionAsk}</OptionInput>
+                                </SelectInput>
+                            </div>
+                        {/each}
+                    </div>
+                    <span class="mt-2 text-xs text-textcolor2">{language.pluginPermissionsDesc}</span>
+                {/if}
+                <div aria-hidden="true" class="w-full border-t border-darkborderc mt-4 mb-4"></div>
+            {/if}
             {#if plugin.version === '3.0'}
                 {@const storageBytes = pluginStorageStore.totalBytes()}
                 <div class="flex items-center">

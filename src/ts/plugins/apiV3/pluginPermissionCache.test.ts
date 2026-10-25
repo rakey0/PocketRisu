@@ -204,4 +204,52 @@ describe('plugin permission gate', () => {
         await gate.request('Other', 'code-2', 'db')
         expect(h.asks()).toHaveLength(5)
     })
+
+    it('reports every saved answer of one version of the code', async () => {
+        const h = makeHarness({ cache: [['code-1_db', true], ['code-1_mainDom', false], ['code-2_sendChat', true]] })
+        const gate = h.restart()
+
+        const decisions = await gate.getScript('code-1')
+        expect(decisions.db).toBe(true)
+        expect(decisions.mainDom).toBe(false)
+        expect(decisions.sendChat).toBeUndefined()
+        expect(Object.keys(decisions).sort()).toEqual(['db', 'fetchLogs', 'inlay', 'mainDom', 'provider', 'replacer', 'sendChat'])
+        expect(h.events).toEqual([])
+    })
+
+    it('a changed answer is used by the next request and survives a restart', async () => {
+        const h = makeHarness()
+        let gate = h.restart()
+        h.setAnswer(() => false)
+        expect(await gate.request('Plug', 'code-1', 'mainDom')).toBe(false)
+
+        await gate.setDecision('code-1', 'mainDom', true)
+        expect(await gate.request('Plug', 'code-1', 'mainDom')).toBe(true)
+        expect(h.asks()).toHaveLength(1)
+
+        gate = h.restart()
+        expect((await gate.getScript('code-1')).mainDom).toBe(true)
+        await gate.setDecision('code-1', 'db', false)
+        expect(await gate.request('Plug', 'code-1', 'db')).toBe(false)
+        expect(h.asks()).toHaveLength(1)
+    })
+
+    it('clearing one answer asks that permission again and keeps the others', async () => {
+        const h = makeHarness({ cache: [['code-1_db', true], ['code-1_mainDom', false]] })
+        const gate = h.restart()
+
+        await gate.setDecision('code-1', 'mainDom', null)
+        expect(h.stored()).toEqual({ cache: [['code-1_db', true]] })
+        expect(await gate.request('Plug', 'code-1', 'mainDom')).toBe(true)
+        expect(await gate.request('Plug', 'code-1', 'db')).toBe(true)
+        expect(h.asks()).toEqual(['ask Plug mainDom'])
+    })
+
+    it('ignores a change to an unknown permission', async () => {
+        const h = makeHarness()
+        const gate = h.restart()
+
+        await gate.setDecision('code-1', 'everything' as PluginPermission, true)
+        expect(h.stored()).toBeNull()
+    })
 })

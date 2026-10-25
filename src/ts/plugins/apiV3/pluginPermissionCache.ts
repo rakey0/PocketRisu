@@ -27,6 +27,10 @@ export function getPluginPermissionKey(scriptHash: string, permission: PluginPer
     return `${scriptHash}_${permission}`
 }
 
+// The saved answer for one permission: true = allowed, false = denied,
+// undefined = not asked yet (the plugin is asked on its next request).
+export type PluginPermissionDecision = boolean | undefined
+
 export type PluginPermissionState = {
     cache: [string, boolean | number][]
     // Written before 1.16, when a decision was also kept per plugin name and
@@ -131,5 +135,26 @@ export function createPluginPermissionGate(deps: PluginPermissionGateDeps) {
         await writing
     }
 
-    return { request, resetScript, resetAll }
+    // Every saved answer for one version of a plugin's code (the settings page).
+    async function getScript(scriptHash: string): Promise<Record<PluginPermission, PluginPermissionDecision>> {
+        await load()
+        const result = {} as Record<PluginPermission, PluginPermissionDecision>
+        for (const permission of pluginPermissions) {
+            result[permission] = decisions.get(getPluginPermissionKey(scriptHash, permission))
+        }
+        return result
+    }
+
+    // Changes one saved answer from the settings page. null forgets it, so the
+    // plugin is asked again the next time it requests the permission.
+    async function setDecision(scriptHash: string, permission: PluginPermission, value: boolean | null) {
+        if (!pluginPermissions.includes(permission)) return
+        await load()
+        const key = getPluginPermissionKey(scriptHash, permission)
+        if (value === null) decisions.delete(key)
+        else decisions.set(key, value)
+        await persist()
+    }
+
+    return { request, resetScript, resetAll, getScript, setDecision }
 }

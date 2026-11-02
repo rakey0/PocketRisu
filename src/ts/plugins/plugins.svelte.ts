@@ -584,6 +584,15 @@ export const allowedDbKeys = [
     'characterOrder'
 ]
 
+// Plugins with database access may read these but never write them. Card
+// toggles ({{getglobalvar::toggle_X}}) live in globalChatVariables and change
+// whenever the user flips one or a chat applies its pinned toggles, so a plugin
+// saving back a database it read earlier would undo them. Writes are dropped
+// instead of being stored as plugin values under the same name.
+export const readOnlyPluginDbKeys = [
+    'globalChatVariables'
+]
+
 export const getV2PluginAPIs = () => {
     return {
         risuFetch: (url: string, options?: Parameters<typeof globalFetch>[1]) =>
@@ -776,12 +785,20 @@ export const getV2PluginAPIs = () => {
                     if (typeof prop === 'string' && allowedDbKeys.includes(prop)) {
                         return (target as any)[prop];
                     }
+                    // A copy, so changing it in place cannot reach the DB.
+                    if (typeof prop === 'string' && readOnlyPluginDbKeys.includes(prop)) {
+                        return $state.snapshot((target as any)[prop]);
+                    }
                     // Custom props map to plugin storage (server-backed, not the DB).
                     console.log('Getting custom db property', prop.toString());
                     return pluginStorageStore.getItemSync(prop.toString()) ?? undefined;
                 },
                 set(target, prop, value) {
                     if (typeof prop === 'string' && applyPluginDbKey(prop, value)) {
+                        return true;
+                    }
+                    if (typeof prop === 'string' && readOnlyPluginDbKeys.includes(prop)) {
+                        console.warn(`Plugin attempted to set db.${prop}, which plugins can only read. The change was ignored.`);
                         return true;
                     }
                     if (typeof prop === 'string' && allowedDbKeys.includes(prop)) {
@@ -795,7 +812,7 @@ export const getV2PluginAPIs = () => {
                     }
                 },
                 ownKeys(target) {
-                    const keys = Reflect.ownKeys(target).filter(key => typeof key === 'string' && allowedDbKeys.includes(key));
+                    const keys = Reflect.ownKeys(target).filter(key => typeof key === 'string' && (allowedDbKeys.includes(key) || readOnlyPluginDbKeys.includes(key)));
                     keys.push(...pluginStorageStore.keys());
                     return keys;
                 },
@@ -839,6 +856,10 @@ export const getV2PluginAPIs = () => {
                 if (applyPluginDbKey(key, newDb[key])) {
                     continue;
                 }
+                // Round-trips of getDatabase() carry these; nothing to report.
+                if (readOnlyPluginDbKeys.includes(key)) {
+                    continue;
+                }
                 if (allowedDbKeys.includes(key)) {
                     (db as any)[key] = restorePluginDbKey(key, newDb[key], db);
                 }
@@ -861,6 +882,9 @@ export const getV2PluginAPIs = () => {
                 }
                 
                 if (applyPluginDbKey(key, newDb[key])) {
+                    continue;
+                }
+                if (readOnlyPluginDbKeys.includes(key)) {
                     continue;
                 }
                 if (allowedDbKeys.includes(key)) {

@@ -421,6 +421,11 @@ interface DatabaseSubset {
     guiHTML?: string;
     /** Color scheme name */
     colorSchemeName?: string;
+    /**
+     * Global chat variables, card toggles included (`toggle_<key>`).
+     * Read-only: setDatabase and setDatabaseLite ignore it.
+     */
+    readonly globalChatVariables?: {[key: string]: string};
 }
 
 // ============================================================================
@@ -1498,6 +1503,9 @@ interface RisuaiPluginAPI {
      * maxContext, maxResponse, frequencyPenalty, PresensePenalty, theme,
      * textTheme, lineHeight, seperateModelsForAxModels, seperateModels,
      * customCSS, guiHTML, colorSchemeName, characterOrder, selectedPersona
+     *
+     * Read-only key: globalChatVariables (card toggles are stored there as
+     * `toggle_<key>`). setDatabase and setDatabaseLite ignore it.
      *
      * Use includeOnly to limit which keys to retrieve for better performance.
      *
